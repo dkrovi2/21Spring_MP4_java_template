@@ -70,6 +70,7 @@ public class TitleCount extends Configured implements Tool {
     public static class TitleCountMap extends Mapper<Object, Text, Text, IntWritable> {
 
         private static final IntWritable one = new IntWritable(1);
+        private Text text = new Text();
 
         List<String> stopWords;
         String delimiters;
@@ -93,7 +94,6 @@ public class TitleCount extends Configured implements Tool {
             while (st.hasMoreTokens()) {
                 String word = st.nextToken();
                 if (!stopWords.contains(word)) {
-                    Text text = new Text();
                     text.set(word);
                     context.write(text, one);
                 }
@@ -102,9 +102,10 @@ public class TitleCount extends Configured implements Tool {
     }
 
     public static class TitleCountReduce extends Reducer<Text, IntWritable, Text, IntWritable> {
+        IntWritable result = new IntWritable();
+
         @Override
         public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-            IntWritable result = new IntWritable();
             int count = 0;
             for (IntWritable val : values) {
               count += val.get();
