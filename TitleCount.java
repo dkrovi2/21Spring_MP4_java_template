@@ -93,7 +93,9 @@ public class TitleCount extends Configured implements Tool {
             while (st.hasMoreTokens()) {
                 String word = st.nextToken();
                 if (!stopWords.contains(word)) {
-                    context.write(st.nextToken(), one);
+                    Text text = new Text();
+                    text.set(word);
+                    context.write(text, one);
                 }
             }
         }
