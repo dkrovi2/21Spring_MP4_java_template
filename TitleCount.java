@@ -88,7 +88,7 @@ public class TitleCount extends Configured implements Tool {
 
 
         @Override
-        public void map(Object key, org.w3c.dom.Text value, Context context) throws IOException, InterruptedException {
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             StringTokenizer st = new StringTokenizer(value.toString(), delimiters);
             while (st.hasMoreTokens()) {
                 String word = st.nextToken();
