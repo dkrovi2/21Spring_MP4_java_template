@@ -1,0 +1,5 @@
+Part A: Congrats!_All_lines_are_correct!      ;
+Part B: Congrats!_All_lines_are_correct!      ;
+Part C: Invalid_output.The_number_of_lines_produced_by_your_code_is_not_valid.      ;
+Part D: Congrats!_All_lines_are_correct!      ;
+Part E: Congrats!_All_lines_are_correct!      ;

@@ -58,11 +58,15 @@ public class OrphanPages extends Configured implements Tool {
       // Let's assume parent is an orphan page. If it is linked, there will be another record written while
       // processing that parent.
       //
-      link.set(Integer.parseInt(stk.nextToken()));
+      int currentPage = Integer.parseInt(stk.nextToken());
+      link.set(currentPage);
       context.write(link, ZERO);
       while (stk.hasMoreTokens()) {
-        link.set(Integer.parseInt(stk.nextToken()));
-        context.write(link, ONE);
+        int linkedPage = Integer.parseInt(stk.nextToken());
+        if (currentPage != linkedPage) {
+          link.set(linkedPage);
+          context.write(link, ONE);
+        }
       }
     }
   }
