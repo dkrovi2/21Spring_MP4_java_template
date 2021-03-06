@@ -105,7 +105,7 @@ public class PopularityLeague extends Configured implements Tool {
   public static class PopularityLeagueReduce
       extends Reducer<IntWritable, IntWritable, IntWritable, IntWritable> {
 
-    private final TreeSet<Pair<Integer, Integer>> inDegreeCounts = new TreeSet<>();
+    private final TreeSet<Pair<Integer, Integer>> linkCounts = new TreeSet<>();
 
     @Override
     public void reduce(IntWritable key, Iterable<IntWritable> values, Context context)
@@ -116,7 +116,7 @@ public class PopularityLeague extends Configured implements Tool {
         sum += i.get();
       }
 
-      inDegreeCounts.add(new Pair<>(sum, key.get()));
+      linkCounts.add(new Pair<>(sum, key.get()));
     }
 
     @Override
@@ -125,7 +125,7 @@ public class PopularityLeague extends Configured implements Tool {
       int itemCount = 0;
       int previousInDegree = -1;
 
-      for (Pair<Integer, Integer> item : inDegreeCounts) {
+      for (Pair<Integer, Integer> item : linkCounts) {
         Integer inDegree = item.first;
         Integer pageId = item.second;
         if (!inDegree.equals(previousInDegree)) {
@@ -152,13 +152,13 @@ public class PopularityLeague extends Configured implements Tool {
 
     public static <A extends Comparable<? super A>, B extends Comparable<? super B>> Pair<A, B> of(
         A first, B second) {
-      return new Pair<A, B>(first, second);
+      return new Pair<>(first, second);
     }
 
     @Override
     public int compareTo(Pair<A, B> o) {
-      int cmp = o == null ? 1 : (this.first).compareTo(o.first);
-      return cmp == 0 ? (this.second).compareTo(o.second) : cmp;
+      int cmp = o == null ? 1 : (o.first).compareTo(this.first);
+      return cmp == 0 ? (o.second).compareTo(this.second) : cmp;
     }
 
     @Override
@@ -178,7 +178,7 @@ public class PopularityLeague extends Configured implements Tool {
     }
 
     private boolean equal(Object o1, Object o2) {
-      return o1 == o2 || (o1 != null && o1.equals(o2));
+      return Objects.equals(o1, o2);
     }
 
     @Override
