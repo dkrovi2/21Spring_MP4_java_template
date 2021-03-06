@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -124,9 +125,9 @@ public class TopTitles extends Configured implements Tool {
       this.delimiters = readHDFSFile(delimitersPath, conf);
     }
 
-
     @Override
-    public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+    public void map(Object key, Text value, Context context)
+        throws IOException, InterruptedException {
       StringTokenizer st = new StringTokenizer(value.toString(), delimiters);
       while (st.hasMoreTokens()) {
         String word = st.nextToken().toLowerCase(Locale.ROOT);
@@ -142,7 +143,8 @@ public class TopTitles extends Configured implements Tool {
     IntWritable result = new IntWritable();
 
     @Override
-    public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+    public void reduce(Text key, Iterable<IntWritable> values, Context context)
+        throws IOException, InterruptedException {
       int count = 0;
       for (IntWritable val : values) {
         count += val.get();
@@ -152,23 +154,26 @@ public class TopTitles extends Configured implements Tool {
     }
   }
 
-  public static class TopTitlesMap extends Mapper<Text, Text, Text, LongWritable> {
+  public static class TopTitlesMap extends Mapper<Text, Text, NullWritable, TextArrayWritable> {
     private final TreeMap<Long, String> titlesByCount = new TreeMap<>();
+    int n;
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
       Configuration conf = context.getConfiguration();
+      n = conf.getInt("N", 10);
     }
 
     @Override
-    public void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+    public void map(Text key, Text value, Context context)
+        throws IOException, InterruptedException {
       String[] tokens = value.toString().split("\t");
       String movieName = tokens[0];
       long noOfViews = Long.parseLong(tokens[1]);
 
       titlesByCount.put(noOfViews, movieName);
 
-      if (titlesByCount.size() > 10) {
+      if (titlesByCount.size() > n) {
         titlesByCount.remove(titlesByCount.firstKey());
       }
     }
@@ -176,56 +181,45 @@ public class TopTitles extends Configured implements Tool {
     @Override
     protected void cleanup(Context context) throws IOException, InterruptedException {
       for (Map.Entry<Long, String> entry : titlesByCount.entrySet()) {
-        context.write(new Text(entry.getValue()), new LongWritable(entry.getKey()));
+        context.write(
+            NullWritable.get(),
+            new TextArrayWritable(new String[] {entry.getValue(), entry.getKey().toString()}));
       }
     }
   }
 
-  public static class TopTitlesReduce extends Reducer<Text, LongWritable, Text, LongWritable> {
-    private TreeMap<Long, String> titlesByCount = new TreeMap<>();
+  public static class TopTitlesReduce extends Reducer<NullWritable, TextArrayWritable, Text, IntWritable> {
+    private TreeSet<Pair<Integer, String>> titlesByCount = new TreeSet<>();
+    private int n;
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
       Configuration conf = context.getConfiguration();
+      this.n = conf.getInt("N", 10);
     }
 
     @Override
-    public void reduce(Text key, Iterable<LongWritable> values, Context context) throws IOException,
-      InterruptedException {
-      String name = key.toString();
-      long count = 0;
-
-      for (LongWritable val : values) {
-        count = val.get();
+    public void reduce(NullWritable key, Iterable<TextArrayWritable> values, Context context) throws IOException, InterruptedException {
+      for (TextArrayWritable val: values) {
+        Text[] pair= (Text[]) val.toArray();
+        String word = pair[0].toString();
+        Integer count = Integer.parseInt(pair[1].toString());
+        titlesByCount.add(new Pair<>(count, word));
+        if (titlesByCount.size() > n) {
+          titlesByCount.remove(titlesByCount.first());
+        }
       }
 
-      // insert data into treeMap,
-      // we want top 10 viewed movies
-      // so we pass count as key
-      titlesByCount.put(count, name);
-
-      // we remove the first key-value
-      // if it's size increases 10
-      if (titlesByCount.size() > 10) {
-        titlesByCount.remove(titlesByCount.firstKey());
-      }
-    }
-
-    @Override
-    public void cleanup(Context context) throws IOException,
-      InterruptedException {
-
-      for (Map.Entry<Long, String> entry : titlesByCount.entrySet()) {
-        long count = entry.getKey();
-        String name = entry.getValue();
-        context.write(new Text(name), new LongWritable(count));
+      for (Pair<Integer, String> item: titlesByCount) {
+        Text word = new Text(item.second);
+        IntWritable value = new IntWritable(item.first);
+        context.write(word, value);
       }
     }
   }
 
-  private static class Pair<A extends Comparable<? super A>,
-    B extends Comparable<? super B>>
-    implements Comparable<Pair<A, B>> {
+  private static class Pair<A extends Comparable<? super A>, B extends Comparable<? super B>>
+      implements Comparable<Pair<A, B>> {
 
     public final A first;
     public final B second;
@@ -235,9 +229,8 @@ public class TopTitles extends Configured implements Tool {
       this.second = second;
     }
 
-    public static <A extends Comparable<? super A>,
-      B extends Comparable<? super B>>
-    Pair<A, B> of(A first, B second) {
+    public static <A extends Comparable<? super A>, B extends Comparable<? super B>> Pair<A, B> of(
+        A first, B second) {
       return new Pair<A, B>(first, second);
     }
 
@@ -258,12 +251,9 @@ public class TopTitles extends Configured implements Tool {
 
     @Override
     public boolean equals(Object obj) {
-      if (!(obj instanceof Pair))
-        return false;
-      if (this == obj)
-        return true;
-      return equal(first, ((Pair<?, ?>) obj).first)
-        && equal(second, ((Pair<?, ?>) obj).second);
+      if (!(obj instanceof Pair)) return false;
+      if (this == obj) return true;
+      return equal(first, ((Pair<?, ?>) obj).first) && equal(second, ((Pair<?, ?>) obj).second);
     }
 
     private boolean equal(Object o1, Object o2) {
