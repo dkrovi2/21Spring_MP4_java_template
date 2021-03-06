@@ -125,6 +125,8 @@ public class PopularityLeague extends Configured implements Tool {
       int itemCount = 0;
       int previousInDegree = -1;
 
+      final TreeMap<Integer, Integer> result = new TreeMap<>(Comparator.reverseOrder());
+
       for (Pair<Integer, Integer> item : linkCounts) {
         Integer inDegree = item.first;
         Integer pageId = item.second;
@@ -132,9 +134,12 @@ public class PopularityLeague extends Configured implements Tool {
           rank = itemCount;
         }
 
-        context.write(new IntWritable(pageId), new IntWritable(rank));
+        result.put(pageId, rank);
         ++itemCount;
         previousInDegree = inDegree;
+      }
+      for (Map.Entry<Integer, Integer> entry : result.entrySet()) {
+        context.write(new IntWritable(entry.getValue()), new IntWritable(entry.getValue()));
       }
     }
   }
@@ -157,9 +162,8 @@ public class PopularityLeague extends Configured implements Tool {
 
     @Override
     public int compareTo(Pair<A, B> o) {
-      int cmp = o == null ? 1 : (this.second).compareTo(o.second);
-      cmp = cmp == 0 ? (this.first).compareTo(o.first) : cmp;
-      return cmp * -1;
+      int cmp = o == null ? 1 : (this.first).compareTo(o.first);
+      return cmp == 0 ? (this.second).compareTo(o.second) : cmp;
     }
 
     @Override
