@@ -1,5 +1,3 @@
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -7,15 +5,12 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -26,45 +21,121 @@ import java.util.*;
 
 public class PopularityLeague extends Configured implements Tool {
 
-    public static void main(String[] args) throws Exception {
-        int res = ToolRunner.run(new Configuration(), new PopularityLeague(), args);
-        System.exit(res);
+  public static void main(String[] args) throws Exception {
+    int res = ToolRunner.run(new Configuration(), new PopularityLeague(), args);
+    System.exit(res);
+  }
+
+  @Override
+  public int run(String[] args) throws Exception {
+    Configuration conf = this.getConf();
+
+    Job job = Job.getInstance(conf, "Link Count");
+    job.setOutputKeyClass(IntWritable.class);
+    job.setOutputValueClass(IntWritable.class);
+    job.setMapperClass(LinkCountMap.class);
+    job.setReducerClass(PopularityLeagueReduce.class);
+
+    FileInputFormat.setInputPaths(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+    job.setJarByClass(PopularityLeague.class);
+    return job.waitForCompletion(true) ? 0 : 1;
+  }
+
+  public static class IntArrayWritable extends ArrayWritable {
+    public IntArrayWritable() {
+      super(IntWritable.class);
+    }
+
+    public IntArrayWritable(Integer[] numbers) {
+      super(IntWritable.class);
+      IntWritable[] ints = new IntWritable[numbers.length];
+      for (int i = 0; i < numbers.length; i++) {
+        ints[i] = new IntWritable(numbers[i]);
+      }
+      set(ints);
+    }
+  }
+
+  public static String readHDFSFile(String path, Configuration conf) throws IOException {
+    Path pt = new Path(path);
+    FileSystem fs = FileSystem.get(pt.toUri(), conf);
+    FSDataInputStream file = fs.open(pt);
+    try (BufferedReader buffIn = new BufferedReader(new InputStreamReader(file))) {
+      StringBuilder everything = new StringBuilder();
+      String line;
+      while ((line = buffIn.readLine()) != null) {
+        everything.append(line);
+        everything.append("\n");
+      }
+      return everything.toString();
+    }
+  }
+
+  public static class LinkCountMap extends Mapper<Object, Text, IntWritable, IntWritable> {
+
+    private List<String> leagueMembers;
+
+    @Override
+    protected void setup(Context context) throws IOException, InterruptedException {
+      Configuration conf = context.getConfiguration();
+      String leagueMembersPath = conf.get("league");
+      this.leagueMembers = Arrays.asList(readHDFSFile(leagueMembersPath, conf).split("\n"));
     }
 
     @Override
-    public int run(String[] args) throws Exception {
-        //TODO
+    public void map(Object key, Text value, Context context)
+        throws IOException, InterruptedException {
+
+      String line = value.toString();
+      StringTokenizer tokenizer = new StringTokenizer(line, ": ");
+      if (tokenizer.hasMoreTokens()) {
+        tokenizer.nextToken();
+        while (tokenizer.hasMoreTokens()) {
+          String toPage = tokenizer.nextToken();
+          if (this.leagueMembers.contains(toPage)) {
+            context.write(new IntWritable(Integer.parseInt(toPage)), new IntWritable(1));
+          }
+        }
+      }
+    }
+  }
+
+  public static class PopularityLeagueReduce
+      extends Reducer<IntWritable, IntWritable, IntWritable, IntWritable> {
+
+    private final TreeSet<Pair<Integer, Integer>> inDegreeCounts = new TreeSet<>();
+
+    @Override
+    public void reduce(IntWritable key, Iterable<IntWritable> values, Context context)
+        throws IOException, InterruptedException {
+
+      int sum = 0;
+      for (IntWritable i : values) {
+        sum += i.get();
+      }
+
+      inDegreeCounts.add(new Pair<>(sum, key.get()));
     }
 
-    public static class IntArrayWritable extends ArrayWritable {
-        public IntArrayWritable() {
-            super(IntWritable.class);
+    @Override
+    protected void cleanup(Context context) throws IOException, InterruptedException {
+      int rank = 0;
+      int itemCount = 0;
+      int previousInDegree = -1;
+
+      for (Pair<Integer, Integer> item : inDegreeCounts) {
+        Integer inDegree = item.first;
+        Integer pageId = item.second;
+        if (!inDegree.equals(previousInDegree)) {
+          rank = itemCount;
         }
 
-        public IntArrayWritable(Integer[] numbers) {
-            super(IntWritable.class);
-            IntWritable[] ints = new IntWritable[numbers.length];
-            for (int i = 0; i < numbers.length; i++) {
-                ints[i] = new IntWritable(numbers[i]);
-            }
-            set(ints);
-        }
+        context.write(new IntWritable(pageId), new IntWritable(rank));
+        ++itemCount;
+        previousInDegree = inDegree;
+      }
     }
-
-    public static String readHDFSFile(String path, Configuration conf) throws IOException{
-        Path pt=new Path(path);
-        FileSystem fs = FileSystem.get(pt.toUri(), conf);
-        FSDataInputStream file = fs.open(pt);
-        BufferedReader buffIn=new BufferedReader(new InputStreamReader(file));
-
-        StringBuilder everything = new StringBuilder();
-        String line;
-        while( (line = buffIn.readLine()) != null) {
-            everything.append(line);
-            everything.append("\n");
-        }
-        return everything.toString();
-    }
-
-    //TODO
+  }
 }
