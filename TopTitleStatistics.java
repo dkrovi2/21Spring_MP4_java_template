@@ -123,59 +123,115 @@ public class TopTitleStatistics extends Configured implements Tool {
       this.delimiters = readHDFSFile(delimitersPath, conf);
     }
 
-
     @Override
-    public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-      //TODO
-      //context.write(<Text>, <IntWritable>); // pass this output to reducer
+    public void map(Object key, Text value, Context context)
+        throws IOException, InterruptedException {
+      String line = value.toString();
+      StringTokenizer tokenizer = new StringTokenizer(line, delimiters);
+      while (tokenizer.hasMoreTokens()) {
+        String word = tokenizer.nextToken().trim().toLowerCase();
+        if (!stopWords.contains(word)) {
+          context.write(new Text(word), new IntWritable(1));
+        }
+      }
     }
   }
 
   public static class TitleCountReduce extends Reducer<Text, IntWritable, Text, IntWritable> {
     @Override
-    public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
-      //TODO
-      //context.write(<Text>, <IntWritable>); // pass this output to TopTitlesStatMap mapper
+    public void reduce(Text key, Iterable<IntWritable> values, Context context)
+        throws IOException, InterruptedException {
+      int sum = 0;
+      for (IntWritable value : values) {
+        sum += value.get();
+      }
+      context.write(key, new IntWritable(sum));
     }
   }
 
   public static class TopTitlesStatMap extends Mapper<Text, Text, NullWritable, TextArrayWritable> {
-    //TODO
+    private int n;
+    private TreeSet<Pair<Integer, String>> countByTitles = new TreeSet<Pair<Integer, String>>();
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
       Configuration conf = context.getConfiguration();
+      this.n = conf.getInt("N", 10);
     }
 
     @Override
-    public void map(Text key, Text value, Context context) throws IOException, InterruptedException {
-      //TODO
+    public void map(Text key, Text value, Context context)
+        throws IOException, InterruptedException {
+      Integer count = Integer.parseInt(value.toString());
+      String title = key.toString();
+
+      countByTitles.add(new Pair<Integer, String>(count, title));
+      if (countByTitles.size() > n) {
+        countByTitles.remove(countByTitles.first());
+      }
     }
 
     @Override
     protected void cleanup(Context context) throws IOException, InterruptedException {
-      //TODO
-      //Cleanup operation starts after all mappers are finished
-      //context.write(<NullWritable>, <TextArrayWritable>); // pass this output to reducer
+      for (Pair<Integer, String> item : countByTitles) {
+        String[] strings = {item.second, item.first.toString()};
+        TextArrayWritable value = new TextArrayWritable(strings);
+        context.write(NullWritable.get(), value);
+      }
     }
   }
 
-  public static class TopTitlesStatReduce extends Reducer<NullWritable, TextArrayWritable, Text, IntWritable> {
-    //TODO
+  public static class TopTitlesStatReduce
+      extends Reducer<NullWritable, TextArrayWritable, Text, IntWritable> {
+    private int n;
+    private TreeSet<Pair<Integer, String>> countByTitles = new TreeSet<Pair<Integer, String>>();
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
       Configuration conf = context.getConfiguration();
+      this.n = conf.getInt("N", 10);
     }
 
     @Override
-    public void reduce(NullWritable key, Iterable<TextArrayWritable> values, Context context) throws IOException, InterruptedException {
-      Integer sum = 0;
-      Integer mean = 0;
-      Integer max = 0;
-      Integer min = 0;
-      Integer var = 0;
+    public void reduce(NullWritable key, Iterable<TextArrayWritable> values, Context context)
+        throws IOException, InterruptedException {
+      int sum = 0;
+      int mean = 0;
+      int max = Integer.MIN_VALUE;
+      int min = Integer.MAX_VALUE;
+      int var = 0;
 
+      for (TextArrayWritable value : values) {
+        Text[] pair = (Text[]) value.toArray();
+        String word = pair[0].toString();
+        Integer count = Integer.parseInt(pair[1].toString());
+
+        countByTitles.add(new Pair<>(count, word));
+        if (countByTitles.size() > n) {
+          countByTitles.remove(countByTitles.first());
+        }
+      }
+
+      for (Pair<Integer, String> item : countByTitles) {
+        int count = Integer.parseInt(item.first.toString());
+        sum = sum + count;
+
+        if (max < count) {
+          max = count;
+        }
+        if (min > count) {
+          min = count;
+        }
+      }
+
+      mean = sum / countByTitles.size();
+
+      int sumOfSquares = 0;
+      for (Pair<Integer, String> item : countByTitles) {
+        int count = Integer.parseInt(item.first.toString());
+        sumOfSquares += Math.pow(count - mean, 2);
+      }
+      var = sumOfSquares / countByTitles.size();
 
       context.write(new Text("Mean"), new IntWritable(mean));
       context.write(new Text("Sum"), new IntWritable(sum));
@@ -185,10 +241,8 @@ public class TopTitleStatistics extends Configured implements Tool {
     }
   }
 
-
-  private static class Pair<A extends Comparable<? super A>,
-    B extends Comparable<? super B>>
-    implements Comparable<Pair<A, B>> {
+  private static class Pair<A extends Comparable<? super A>, B extends Comparable<? super B>>
+      implements Comparable<Pair<A, B>> {
 
     public final A first;
     public final B second;
@@ -198,9 +252,8 @@ public class TopTitleStatistics extends Configured implements Tool {
       this.second = second;
     }
 
-    public static <A extends Comparable<? super A>,
-      B extends Comparable<? super B>>
-    Pair<A, B> of(A first, B second) {
+    public static <A extends Comparable<? super A>, B extends Comparable<? super B>> Pair<A, B> of(
+        A first, B second) {
       return new Pair<A, B>(first, second);
     }
 
@@ -221,12 +274,9 @@ public class TopTitleStatistics extends Configured implements Tool {
 
     @Override
     public boolean equals(Object obj) {
-      if (!(obj instanceof Pair))
-        return false;
-      if (this == obj)
-        return true;
-      return equal(first, ((Pair<?, ?>) obj).first)
-        && equal(second, ((Pair<?, ?>) obj).second);
+      if (!(obj instanceof Pair)) return false;
+      if (this == obj) return true;
+      return equal(first, ((Pair<?, ?>) obj).first) && equal(second, ((Pair<?, ?>) obj).second);
     }
 
     private boolean equal(Object o1, Object o2) {
