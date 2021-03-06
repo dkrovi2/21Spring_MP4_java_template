@@ -157,8 +157,8 @@ public class PopularityLeague extends Configured implements Tool {
 
     @Override
     public int compareTo(Pair<A, B> o) {
-      int cmp = o == null ? 1 : (this.first).compareTo(o.first);
-      cmp = cmp == 0 ? (this.second).compareTo(o.second) : cmp;
+      int cmp = o == null ? 1 : (this.second).compareTo(o.second);
+      cmp = cmp == 0 ? (this.first).compareTo(o.first) : cmp;
       return cmp * -1;
     }
 
