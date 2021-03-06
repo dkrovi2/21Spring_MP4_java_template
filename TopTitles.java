@@ -155,8 +155,8 @@ public class TopTitles extends Configured implements Tool {
   }
 
   public static class TopTitlesMap extends Mapper<Text, Text, NullWritable, TextArrayWritable> {
-    private final TreeMap<Long, String> titlesByCount = new TreeMap<>();
     int n;
+    private final TreeSet<Pair<Integer, String>> titlesByCount = new TreeSet<Pair<Integer, String>>();
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
@@ -167,29 +167,27 @@ public class TopTitles extends Configured implements Tool {
     @Override
     public void map(Text key, Text value, Context context)
         throws IOException, InterruptedException {
-      String[] tokens = value.toString().split("\t");
-      String movieName = tokens[0];
-      long noOfViews = Long.parseLong(tokens[1]);
+      Integer count = Integer.parseInt(value.toString());
+      String word = key.toString();
 
-      titlesByCount.put(noOfViews, movieName);
-
+      titlesByCount.add(new Pair<>(count, word));
       if (titlesByCount.size() > n) {
-        titlesByCount.remove(titlesByCount.firstKey());
+        titlesByCount.remove(titlesByCount.first());
       }
     }
 
     @Override
     protected void cleanup(Context context) throws IOException, InterruptedException {
-      for (Map.Entry<Long, String> entry : titlesByCount.entrySet()) {
-        context.write(
-            NullWritable.get(),
-            new TextArrayWritable(new String[] {entry.getValue(), entry.getKey().toString()}));
+      for (Pair<Integer, String> item: titlesByCount) {
+        String[] strings = {item.second, item.first.toString()};
+        TextArrayWritable val = new TextArrayWritable(strings);
+        context.write(NullWritable.get(), val);
       }
     }
   }
 
   public static class TopTitlesReduce extends Reducer<NullWritable, TextArrayWritable, Text, IntWritable> {
-    private TreeSet<Pair<Integer, String>> titlesByCount = new TreeSet<>();
+    private final TreeSet<Pair<Integer, String>> titlesByCount = new TreeSet<>();
     private int n;
 
     @Override
