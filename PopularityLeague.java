@@ -139,7 +139,7 @@ public class PopularityLeague extends Configured implements Tool {
         previousInDegree = inDegree;
       }
       for (Map.Entry<Integer, Integer> entry : result.entrySet()) {
-        context.write(new IntWritable(entry.getValue()), new IntWritable(entry.getValue()));
+        context.write(new IntWritable(entry.getKey()), new IntWritable(entry.getValue()));
       }
     }
   }
